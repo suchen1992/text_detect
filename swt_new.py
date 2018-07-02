@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 import imageProcessing as ip
 from scipy.stats import norm, mode
+import math
 import matplotlib.pyplot as plt
 
 # Parameters
@@ -22,6 +23,62 @@ STEP_LIMIT = 10
 
 def getAspectRatio(width, height):
     return (1.0 * max(width, height)) / (min(width, height) + 1e-4)
+
+def calculateDistance(point1, point2):
+    return math.sqrt((point1.getX() - point2.getX())**2+(point1.getY() - point2.getY())**2)
+
+def minBoxesDistance((x1, y1, w1, h1), (x2, y2, w2, h2)):
+    distances = []
+    box1 = box(x1, y1, w1, h1)
+    box2 = box(x2, y2, w2, h2)
+    points1 = box1.getPoints()
+    points2 = box2.getPoints()
+    for point1 in points1:
+        for point2 in points2:
+            distances.append(calculateDistance(point1, point2))
+    return min(distances)
+
+class box(object):
+    def __init__(self, x, y, w, h):
+        self.points = [point(x, y), point(x, y+h), point(x+w, y), point(x+w, y+h)]
+
+    def getPoints(self):
+        return self.points
+
+class point(object):
+
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+    def getX(self):
+        return self.x
+
+    def getY(self):
+        return self.y
+
+class StrokeWidthObject(object):
+
+    def __init__(self, strokeWidth, coordinateMap):
+        self.widthList = []
+        self.areaList = []
+        self.addWidth(strokeWidth)
+        self.addArea(coordinateMap)
+
+    def addWidth(self, strokeWidth):
+        self.widthList.append(strokeWidth)
+
+    def addArea(self, coordinateMap):
+        self.areaList.append(coordinateMap)
+
+    def getWidthList(self):
+        return self.widthList
+
+    def getAreaList(self):
+        return self.areaList
+
+    def setAreaList(self, areaList):
+        self.widthList = areaList
 
 class TextDetection(object):
 
@@ -137,7 +194,7 @@ class TextDetection(object):
         kernel = np.ones((6, 6), np.uint8)
         closed = cv2.erode(self.processedImg, kernel)
         _, contours, hierarchy = cv2.findContours(closed, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # 检测文字轮廓
-        i = 0
+        strokeObjectList = []
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
             if w < 30 or h < 30:
@@ -160,7 +217,6 @@ class TextDetection(object):
                 xMin = xMin_opp
                 xMax = xMax_opp
 
-
             #cv2.imwrite("/home/suchen/桌面/temp1/"+str(i)+".jpg", self.img[y: y+h, x: x+w])
             if len(strokeWidths) < SWT_TOTAL_COUNT:
                 continue
@@ -174,6 +230,22 @@ class TextDetection(object):
 
             strokeWidthVarianceRatio = (1.0 * strokeWidth) / (std ** std)
             if strokeWidthVarianceRatio > STROKE_WIDTH_VARIANCE_RATIO_LIM:
+                if len(strokeObjectList) == 0:
+                    tempStrokeObject = StrokeWidthObject(strokeWidth, {"x":x , "y":y , "w":w , "h":h})
+                    strokeObjectList.append(tempStrokeObject)
+                else:
+                    addNewFlag = True
+                    for strokeObject in strokeObjectList:
+                        meanStrokeWidth = mode(strokeObject.getWidthList(), axis=None)[0][0]
+                        if max(meanStrokeWidth, strokeWidth) / min(meanStrokeWidth, strokeWidth) < 2:
+                            strokeObject.addWidth(strokeWidth)
+                            strokeObject.addArea({"x":x , "y":y , "w":w , "h":h})
+                            addNewFlag = False
+                    if addNewFlag:
+                        tempStrokeObject = StrokeWidthObject(strokeWidth, {"x": x, "y": y, "w": w, "h": h})
+                        strokeObjectList.append(tempStrokeObject)
+
+            """
                 tempImg = self.img[y: y+h, x: x+w]
                 #cv2.imwrite("/home/suchen/桌面/temp2/"+str(i)+".jpg", tempImg)
                 #print "{}'s std = {}".format(i, strokeWidthVarianceRatio)
@@ -181,9 +253,57 @@ class TextDetection(object):
                 print "{}'s strike = {}".format(i, strokeWidth)
                 cv2.waitKey(0)
             i += 1
+            """
+        i = 0
+        for strokeObject in strokeObjectList:
+            strokeObject.setAreaList(ip.boxListSort(strokeObject.getAreaList()))
+            areaList = strokeObject.getAreaList()
+            mergeCoordinate = {}
+            t = 0
+            for areaCoordinate in areaList:
+                """# 检测轮廓图数量是否完整
+                x, y, w, h = areaCoordinate["x"], areaCoordinate["y"], areaCoordinate["w"], areaCoordinate["h"]
+                tempImg = self.img[y: y + h, x: x + w]
+                cv2.imwrite("/home/suchen/桌面/temp2/"+str(t)+".jpg", tempImg)
+                t += 1
+                continue"""
+                if len(mergeCoordinate) == 0:
+                    mergeCoordinate = areaCoordinate
+                    continue
+                else:
+                    x, y, w, h = areaCoordinate["x"], areaCoordinate["y"], areaCoordinate["w"], areaCoordinate["h"]
+                    mergeX, mergeY, mergeW, mergeH = mergeCoordinate["x"], mergeCoordinate["y"], mergeCoordinate["w"], mergeCoordinate["h"]
+                    """
+                    # 检测面积扩大问题
+                    if len(areaList) > 6 and areaCoordinate == areaList[10]:
+                        tempImg = self.img[y: y + h, x: x + w]
+                        cv2.imshow("temp", tempImg)
+                        cv2.waitKey(0)
+                        temp2 = self.img[mergeY: mergeY+mergeH, mergeX:mergeX+mergeW]
+                        cv2.imshow("t2", temp2)
+                        cv2.waitKey(0)
+                        print "merge coordinate is x:{}, y:{}, w:{}, h:{}".format(mergeCoordinate["x"],mergeCoordinate["y"],mergeCoordinate["w"],mergeCoordinate["h"])
+                        print "tempImg coordinate is x:{}, y:{}, w:{}, h:{}".format(x,y,w,h)
+                        boxesDistance = minBoxesDistance((mergeX, mergeY, mergeW, mergeH), (x, y, w, h))
+                        print(boxesDistance)
+                    """
+
+                    if minBoxesDistance((mergeX, mergeY, mergeW, mergeH), (x, y, w, h)) <= 2 * min(w, h):
+                        mergeCoordinate["x"] = min(mergeCoordinate["x"], x)
+                        mergeCoordinate["y"] = min(mergeCoordinate["y"], y)
+                        mergeCoordinate["w"] = max(mergeCoordinate["x"] + mergeCoordinate["w"], x + w) - mergeCoordinate["x"]
+                        mergeCoordinate["h"] = max(mergeCoordinate["y"] + mergeCoordinate["h"], y + h) - mergeCoordinate["y"]
+            """# roi区域"""
+            x, y, w, h = mergeCoordinate["x"], mergeCoordinate["y"], mergeCoordinate["w"], mergeCoordinate["h"]
+            tempImg = self.img[y: y+h, x: x+w]
+            cv2.imshow("temp", tempImg)
+            cv2.waitKey(0)
+
+
 
 if __name__=="__main__":
-    td = TextDetection("/home/suchen/桌面/originTop100/14.jpg")
+    #18 6
+    td = TextDetection("/home/suchen/桌面/originTop100/6.jpg")
     td.detect()
 
 
