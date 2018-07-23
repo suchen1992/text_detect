@@ -33,8 +33,8 @@ def ocrApi(imagePath, screenShotFlag=True):
             if w1 * h1 == h * w:
                 continue
             cv2.imwrite("/home/suchen/桌面/temp1/" + str(i) + ".jpg", grayImg[y1: y1 + h1, x1: x1 + w1])
-            i += 1
-            continue
+            #i += 1
+            #continue
             boxTemp = {"x":x1, "y":y1, "width":w1, "height": h1}
             # 将当前的轮廓图通过判断是否重叠融合进box数组中，
             imageProcessing.mixBoxes(boxTemp, boxList)

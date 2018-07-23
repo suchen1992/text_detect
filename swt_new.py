@@ -8,6 +8,7 @@ import numpy as np
 import imageProcessing as ip
 from scipy.stats import norm, mode
 import math
+import os
 import matplotlib.pyplot as plt
 
 # Parameters
@@ -83,6 +84,8 @@ class StrokeWidthObject(object):
 class TextDetection(object):
 
     def __init__(self, image_path):
+        dirList = image_path.split("/")
+        self.fileName = dirList[len(dirList) - 1].split(".")[0]
         self.imagaPath = image_path
         img = cv2.imread(image_path)
         rgbImg = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -191,6 +194,9 @@ class TextDetection(object):
         return (mostStrokeWidth, mostStrokeWidthCount, mean, std, xMin, xMax)
 
     def detect(self):
+        filePath = os.path.join(outputDir, self.fileName + ".txt")
+        fp = open(filePath, 'a')
+
         kernel = np.ones((6, 6), np.uint8)
         closed = cv2.erode(self.processedImg, kernel)
         _, contours, hierarchy = cv2.findContours(closed, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # 检测文字轮廓
@@ -254,12 +260,10 @@ class TextDetection(object):
                 cv2.waitKey(0)
             i += 1
             """
-        i = 0
         for strokeObject in strokeObjectList:
             strokeObject.setAreaList(ip.boxListSort(strokeObject.getAreaList()))
             areaList = strokeObject.getAreaList()
-            mergeCoordinate = {}
-            t = 0
+            coordinatesList = []
             for areaCoordinate in areaList:
                 """# 检测轮廓图数量是否完整
                 x, y, w, h = areaCoordinate["x"], areaCoordinate["y"], areaCoordinate["w"], areaCoordinate["h"]
@@ -267,44 +271,65 @@ class TextDetection(object):
                 cv2.imwrite("/home/suchen/桌面/temp2/"+str(t)+".jpg", tempImg)
                 t += 1
                 continue"""
-                if len(mergeCoordinate) == 0:
+                if len(coordinatesList) == 0:
                     mergeCoordinate = areaCoordinate
+                    coordinatesList.append(mergeCoordinate)
                     continue
                 else:
-                    x, y, w, h = areaCoordinate["x"], areaCoordinate["y"], areaCoordinate["w"], areaCoordinate["h"]
-                    mergeX, mergeY, mergeW, mergeH = mergeCoordinate["x"], mergeCoordinate["y"], mergeCoordinate["w"], mergeCoordinate["h"]
-                    """
-                    # 检测面积扩大问题
-                    if len(areaList) > 6 and areaCoordinate == areaList[10]:
-                        tempImg = self.img[y: y + h, x: x + w]
-                        cv2.imshow("temp", tempImg)
-                        cv2.waitKey(0)
-                        temp2 = self.img[mergeY: mergeY+mergeH, mergeX:mergeX+mergeW]
-                        cv2.imshow("t2", temp2)
-                        cv2.waitKey(0)
-                        print "merge coordinate is x:{}, y:{}, w:{}, h:{}".format(mergeCoordinate["x"],mergeCoordinate["y"],mergeCoordinate["w"],mergeCoordinate["h"])
-                        print "tempImg coordinate is x:{}, y:{}, w:{}, h:{}".format(x,y,w,h)
-                        boxesDistance = minBoxesDistance((mergeX, mergeY, mergeW, mergeH), (x, y, w, h))
-                        print(boxesDistance)
-                    """
+                    addNewFlag = True
+                    for mergeCoordinate in coordinatesList:
+                        x, y, w, h = areaCoordinate["x"], areaCoordinate["y"], areaCoordinate["w"], areaCoordinate["h"]
+                        mergeX, mergeY, mergeW, mergeH = mergeCoordinate["x"], mergeCoordinate["y"], mergeCoordinate["w"], mergeCoordinate["h"]
+                        """
+                        # 检测面积扩大问题
+                        if len(areaList) > 6 and areaCoordinate == areaList[10]:
+                            tempImg = self.img[y: y + h, x: x + w]
+                            cv2.imshow("temp", tempImg)
+                            cv2.waitKey(0)
+                            temp2 = self.img[mergeY: mergeY+mergeH, mergeX:mergeX+mergeW]
+                            cv2.imshow("t2", temp2)
+                            cv2.waitKey(0)
+                            print "merge coordinate is x:{}, y:{}, w:{}, h:{}".format(mergeCoordinate["x"],mergeCoordinate["y"],mergeCoordinate["w"],mergeCoordinate["h"])
+                            print "tempImg coordinate is x:{}, y:{}, w:{}, h:{}".format(x,y,w,h)
+                            boxesDistance = minBoxesDistance((mergeX, mergeY, mergeW, mergeH), (x, y, w, h))
+                            print(boxesDistance)
+                        """
 
-                    if minBoxesDistance((mergeX, mergeY, mergeW, mergeH), (x, y, w, h)) <= 2 * min(w, h):
-                        mergeCoordinate["x"] = min(mergeCoordinate["x"], x)
-                        mergeCoordinate["y"] = min(mergeCoordinate["y"], y)
-                        mergeCoordinate["w"] = max(mergeCoordinate["x"] + mergeCoordinate["w"], x + w) - mergeCoordinate["x"]
-                        mergeCoordinate["h"] = max(mergeCoordinate["y"] + mergeCoordinate["h"], y + h) - mergeCoordinate["y"]
-            """# roi区域"""
-            x, y, w, h = mergeCoordinate["x"], mergeCoordinate["y"], mergeCoordinate["w"], mergeCoordinate["h"]
-            tempImg = self.img[y: y+h, x: x+w]
-            cv2.imshow("temp", tempImg)
-            cv2.waitKey(0)
+                        if minBoxesDistance((mergeX, mergeY, mergeW, mergeH), (x, y, w, h)) <= 2 * min(w, h):
+                            addNewFlag = False
+                            mergeCoordinate["x"] = min(mergeCoordinate["x"], x)
+                            mergeCoordinate["y"] = min(mergeCoordinate["y"], y)
+                            mergeCoordinate["w"] = max(mergeCoordinate["x"] + mergeCoordinate["w"], x + w) - mergeCoordinate["x"]
+                            mergeCoordinate["h"] = max(mergeCoordinate["y"] + mergeCoordinate["h"], y + h) - mergeCoordinate["y"]
+                            break
+
+                    if addNewFlag:
+                        coordinatesList.append(areaCoordinate)
+
+            for mergeCoordinate in coordinatesList:
+                """# roi区域"""
+                #i = 0
+                x, y, w, h = mergeCoordinate["x"], mergeCoordinate["y"], mergeCoordinate["w"], mergeCoordinate["h"]
+                #tempImg = self.img[y: y+h, x: x+w]
+                #cv2.imwrite("/home/suchen/桌面/test_temp/"+self.fileName+"_"+str(i)+".jpg", tempImg)
+                #i+=1
+                cv2.rectangle(self.img, (x, y), (x+w, y+h),(0, 255, 0), 3)
+                line = str(x) + " " + str(y) + " " + str(w) + " " + str(h) + "\n"
+                fp.writelines(line)
+
+        #cv2.imshow("temp", td.img)
+        #cv2.waitKey(0)
 
 
 
 if __name__=="__main__":
-    #18 6
-    td = TextDetection("/home/suchen/桌面/originTop100/6.jpg")
-    td.detect()
+    inputDir = "/home/suchen/桌面/ocr_files/dataset/ocrDataset/"
+    outputDir = "/home/suchen/桌面/ocr_output/"
+    files = os.listdir(inputDir)
+    for file in files:
+        td = TextDetection(inputDir + file)
+        td.detect()
+        td.img = cv2.cvtColor(td.img, cv2.COLOR_BGR2RGB)
 
 
 
